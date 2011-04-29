@@ -18,4 +18,6 @@ Gem::Specification.new do |s|
 
   s.add_runtime_dependency 'barista'
   s.add_runtime_dependency 'compass', '~> 0.11.0'
+
+  s.add_development_dependency 'jasmine'
 end

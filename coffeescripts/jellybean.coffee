@@ -44,19 +44,6 @@
 
       return this
 
-  # A Controller follows the role of a controller in typical MVC fashion. It's
-  # job is to keep the element on screen (View) in sync with the underlying
-  # data its representing (Model)
-  Controller = class Jb.Controller
-    el: null    
-
-    constructor: (params) ->
-      @el = params.el if params.el
-
-  # Mixin the Events methods
-  _(Controller::).extend(Events)
-
-
   # A Model is responsible for data validation, transformation, & persistence
   # @example
   #   class Message extends Jellybean.Model
@@ -67,14 +54,96 @@
   #       // do something
   #
   Model = class Jb.Model
-    id: null
     attributes: {}
+
+    afterInit: -> null
+
+    # #write is used to set values of the attributes hash
+    # Its used internally by the dynamic property readers
+    read: (attr) ->
+      @attributes[attr]
+
+    # #write is used to set values of the attributes hash
+    # Its used internally by the dynamic property writers
+    write: (attr, val) ->
+      @attributes[attr] = val
+      this.trigger('changed')
+
+    # To update and save a single attribute
+    updateAttribute: (attr, val) ->
+      this.write(attr, val)
+      this.save()
+
+    # To update and save one or more attributes
+    updateAttributes: (newAttributes) ->
+      this.write(attr, val) for attr, val of newAttributes
+      this.save()
+
+    validate: -> 
+      @errors = []
+      return true
+
+    save: ->
+      if this.validate()
+        this.trigger('update', this)
+        @newRecord = false
+        return true
+      else
+        this.trigger('error', this, @errors)
+        return false
   
   Model.setModelName = (name) ->
     @modelName = name
 
   Model.setAttributes = (attributes) ->
     @attributes = attributes
+
+  Model.propertyDescriptors = ->
+    descriptors = {}
+    for attribute in @attributes
+      do(attribute) ->
+        descriptors[attribute] = 
+          get: -> this.read(attribute)
+          set: (val) -> this.write(attribute, val)
+          enumerable: true
+    # sets the modelName of the object
+    descriptors['modelName'] = 
+      value: @modelName
+      writable: false
+
+    return descriptors
+
+
+  # Creates a new, unsaved instance of the model. Attributes of the model are
+  # initialized with the passed object.
+  Model.init = (attributes) ->
+    record = this.allocate()
+    record.attributes = attributes
+    record.newRecord = true
+    return record
+ 
+  # Creates a new instance of the model and saves it.
+  Model.create = (attributes) ->
+    record = this.init(attributes)
+    # record.beforeCreate
+    record.save()
+    # record.afterCreate
+    return record
+
+  # Builds an instance of the model
+  Model.allocate = ->
+    return Object.create(@::, @propertyDescriptors())
+
+  # Wakes a model up from persistence
+  Model.inst = (attributes) ->
+    # All reinitialized records should come pre-filled with their id.
+    throw "An id is required to reinitialize a record" unless attributes.id 
+    record = this.allocate()
+    record.attributes = attributes
+    record.newRecord = false
+    return record
+    
+
 
   # Mixin the Events methods
   _(Model::).extend(Events)
@@ -121,6 +190,13 @@
 
   _(ViewController::).extend(Events)
 
+  ###
+    @class Jellybean.NestedListViewController  
+    Used to display a list of lists, where the items of the secondary lists are
+    selectable
+
+    Events: selection
+  ###
   class Jb.NestedListViewController extends ViewController
 
     currentSelection: null
@@ -143,6 +219,46 @@
       this.$('.'+@currentSelectionClassName).removeClass(@currentSelectionClassName)
       this.$(@currentSelection).addClass(@currentSelectionClassName)
 
+  ###
+    Views
+  ###
+  
+  ### 
+    View is the base of all defined views
+  ###
+  View = class Jb.View
+
+    # Container element for view
+    element: null
+
+    # jQuery in the context of this View
+    $: (selector) ->
+      Jb.$(selector, @element)
+
+    # Update contents 
+    render: -> null
+
+
+
+
+  _(View::).extend(Events)
+
+  ###
+     ScrollView
+  ###
+  ScrollView = class Jb.ScrollView extends View
+
+  ###
+    @class TableView
+  ###
+  class Jb.TableView extends ScrollView
+    
+
+  ###
+    @class TableCellView
+  ###
+  class Jb.TableCellView extends ViewController
+    template: '<tr><td>{{body}}</td></tr>'
 
   # return to global scope
   return Jb
