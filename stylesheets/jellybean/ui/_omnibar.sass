@@ -1,0 +1,29 @@
+@import compass/css3/images
+@import compass/css3/text-shadow
+
+=jb_omnibar($color1: #027901, $color2: #039f01)
+  width: 100%
+  +background(linear-gradient(transparentize($color1, 0.5), transparentize($color2, 0.3)))
+  border-bottom: 1px solid transparentize(#000, 0.6)
+  +single-text-shadow(transparentize(white, 0.3), 0px, 1px, 1px)
+  -webkit-font-smoothing: antialiased
+
+  .brand
+    display: inline-block
+    font-size: 14px
+    padding: 5px 10px
+
+  .sub
+    font-size: 13px
+    margin-top: -5px
+    line-height: 90%
+    text-transform: lowercase
+    font-variant: small-caps
+    padding: 0px 10px 5px
+
+  .currentUser
+    display: inline-block
+    float: right
+    padding: 5px 10px
+    font-size: 11px
+
