@@ -1,4 +1,4 @@
-@['Jellybean'] = ( ->
+@['Jellybean'] = do ->
 
   # The Jb object we're building
   Jb = {}
@@ -54,9 +54,18 @@
   #       // do something
   #
   Model = class Jb.Model
-    attributes: {}
-
+    attributes: null
     afterInit: -> null
+
+    initWith: (properties) ->
+      @attributes = {}
+      if attrs = properties.attributes
+        this.write(attr, val) for attr, val of attrs
+
+      # initialize the callbacks hash so that it can be cloned
+      @_callbacks = {}
+
+      return this
 
     # #write is used to set values of the attributes hash
     # Its used internally by the dynamic property readers
@@ -68,6 +77,7 @@
     write: (attr, val) ->
       @attributes[attr] = val
       this.trigger('changed')
+      return val
 
     # To update and save a single attribute
     updateAttribute: (attr, val) ->
@@ -91,6 +101,13 @@
       else
         this.trigger('error', this, @errors)
         return false
+
+    # Returns an entangled copy of this record. Making changes to this object's
+    # attributes will update the copy and vice versa
+    # ~ Inspired by Spine.js
+    clone: ->
+      Object.create(this)
+
   
   Model.setModelName = (name) ->
     @modelName = name
@@ -118,7 +135,7 @@
   # initialized with the passed object.
   Model.init = (attributes) ->
     record = this.allocate()
-    record.attributes = attributes
+    record.initWith(attributes: attributes)
     record.newRecord = true
     return record
  
@@ -139,25 +156,20 @@
     # All reinitialized records should come pre-filled with their id.
     throw "An id is required to reinitialize a record" unless attributes.id 
     record = this.allocate()
-    record.attributes = attributes
+    record.initWith(attributes: attributes)
     record.newRecord = false
     return record
     
-
-
   # Mixin the Events methods
   _(Model::).extend(Events)
 
+  #
+  # Jellybean Controllers
+  #
 
-  ###
-    Jellybean Controllers
-  ###
-
-  ###
-    A ViewController follows the role of a controller in typical MVC fashion. It's
-    job is to keep the element on screen (View) in sync with the underlying
-    data its representing (Model)
-  ###
+  # A ViewController follows the role of a controller in typical MVC fashion. It's
+  # job is to keep the element on screen (View) in sync with the underlying
+  # data its representing (Model)
   ViewController = class Jb.ViewController 
 
     # The HTMLElement that contains everything within this controllers scope
@@ -190,13 +202,11 @@
 
   _(ViewController::).extend(Events)
 
-  ###
-    @class Jellybean.NestedListViewController  
-    Used to display a list of lists, where the items of the secondary lists are
-    selectable
-
-    Events: selection
-  ###
+  # ## Jellybean.NestedListViewController  
+  # Used to display a list of lists, where the items of the secondary lists are
+  # selectable
+  #
+  # Events: selection
   class Jb.NestedListViewController extends ViewController
 
     currentSelection: null
@@ -219,13 +229,13 @@
       this.$('.'+@currentSelectionClassName).removeClass(@currentSelectionClassName)
       this.$(@currentSelection).addClass(@currentSelectionClassName)
 
-  ###
-    Views
-  ###
+  #
+  #  Views
+  #
   
-  ### 
-    View is the base of all defined views
-  ###
+  # 
+  # View is the base of all defined views
+  #
   View = class Jb.View
 
     # Container element for view
@@ -243,23 +253,12 @@
 
   _(View::).extend(Events)
 
-  ###
-     ScrollView
-  ###
   ScrollView = class Jb.ScrollView extends View
 
-  ###
-    @class TableView
-  ###
   class Jb.TableView extends ScrollView
     
-
-  ###
-    @class TableCellView
-  ###
   class Jb.TableCellView extends ViewController
     template: '<tr><td>{{body}}</td></tr>'
 
   # return to global scope
   return Jb
-)()
