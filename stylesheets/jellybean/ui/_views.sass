@@ -1,0 +1,38 @@
+@import compass/css3/box-shadow
+
+.JBGroupedTableStyle
+  background-color: #ededed
+  border-right: 1px solid #a3a3a3
+  height: 100%
+  > li
+    margin: 4px 0px 5px
+    &:first-child
+      margin-top: 0px
+  h1
+    color: #444
+    font-weight: bold
+    text-transform: uppercase
+    padding: 0.5em 0.75em
+  ul li a
+    color: #333
+    display: block
+    font-size: 13px
+    padding: 0.4em 1.5em 
+    text-decoration: none
+
+    &:hover
+      background-color: #666
+      color: #fff
+      +single-text-shadow($half-black, 0, 1px, 1px)
+      font-weight: bold
+      
+    &:active, &.selected
+      color: white
+      background-color: #1677E4
+      background-color: #666
+      +single-text-shadow($half-black, 0, 1px, 1px)
+      +single-box-shadow($half-black, 0px, 2px, 3px, 0px, true)
+      font-weight: bold
+    &.selected
+      +background(linear-gradient(darken(#72a9e8, 10%), darken(#61a2eb, 10%)))
+  

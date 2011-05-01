@@ -102,6 +102,10 @@
         this.trigger('error', this, @errors)
         return false
 
+    # Used by JSON.stringify to only serialize the attributes
+    toJSON: ->
+      return @attributes
+
     # Returns an entangled copy of this record. Making changes to this object's
     # attributes will update the copy and vice versa
     # ~ Inspired by Spine.js
@@ -171,94 +175,129 @@
   # job is to keep the element on screen (View) in sync with the underlying
   # data its representing (Model)
   ViewController = class Jb.ViewController 
-
-    # The HTMLElement that contains everything within this controllers scope
-    view: null    
-
-    initialize: -> 
-
-    constructor: (params) ->
-      @initialParams = params
-      if params
-        @view = params.view if params.view
-        @selector = params.selector if params.selector
-      this._findView() unless @view
-
-      this.initialize()
-
-    # jQuery in the context of this View
-    $: (selector) ->
-      Jb.$(selector, @view)
-
-    # Use jQuery to find the first element the selector returns
-    _findView: ->
-      if @selector
-        if el = Jb.$(@selector)[0]
-          @view = el
-          return @view
-        else
-          return false
+    title: null
+    view: null
 
 
   _(ViewController::).extend(Events)
 
-  # ## Jellybean.NestedListViewController  
-  # Used to display a list of lists, where the items of the secondary lists are
-  # selectable
-  #
-  # Events: selection
-  class Jb.NestedListViewController extends ViewController
+       
 
-    currentSelection: null
-    currentSelectionClassName: 'selected'
- 
-    constructor: (view) ->
-      super(view: view)
-      @currentSelection = this.$('.'+@currentSelectionClassName)[0]
-      this.bindEvents()
-
-    bindEvents: -> 
-      $(@view).delegate 'a', 'click', (e) =>
-        e.preventDefault()
-        unless @currentSelection is e.target
-          @currentSelection = e.target
-          this.trigger('selection', @currentSelection)
-          this.updateView()
-
-    updateView: ->
-      this.$('.'+@currentSelectionClassName).removeClass(@currentSelectionClassName)
-      this.$(@currentSelection).addClass(@currentSelectionClassName)
-
-  #
-  #  Views
-  #
-  
-  # 
-  # View is the base of all defined views
-  #
   View = class Jb.View
+    
+    constructor: (element, options = {}) ->
+      @element = element
+      @options = options
+      this.initialize()
+
+    initialize: -> null
 
     # Container element for view
     element: null
 
     # jQuery in the context of this View
     $: (selector) ->
-      Jb.$(selector, @element)
+      Jb.$(selector or @element, @element)
 
     # Update contents 
     render: -> null
 
-
-
-
   _(View::).extend(Events)
 
-  ScrollView = class Jb.ScrollView extends View
+  class Jb.TableViewController extends ViewController
 
-  class Jb.TableView extends ScrollView
-    
-  class Jb.TableCellView extends ViewController
-    template: '<tr><td>{{body}}</td></tr>'
+    tableStyle: 'JBDefaultTableStyle'
+    currentSelection: null
+    currentSelectionClassName: 'selected'
+ 
+    constructor: (options = {}) ->
+      @data = []
+      @view = new Jb.TableView(options.element, style: this.tableStyle)
+      @view.delegate = this
+      this.initialize() if @initialize
+
+
+  class Jb.TableView extends View
+    delegate: null
+    currentSelection: null
+    visibleCells: null
+    template: Handlebars.compile '''
+      <li>
+        <h1>{{title}}</h1>
+        <ul></ul>
+      </li>
+    '''
+
+    initialize: ->
+      super()
+      @visibleCells = []
+      @selectedIndex = null
+      Jb.$(@element)
+        .addClass(@options['style']) 
+      this.bindEvents()
+
+    bindEvents: -> 
+      $(@element).delegate 'a', 'click', (e) =>
+        e.preventDefault()
+        this.setSelectedIndex(this.$('a').index(e.target))
+
+    setSelectedIndex: (index) ->
+      # Don't reselect the same item
+      if index is @selectedIndex
+        return false
+      # Unselect the current selection
+      if @selectedIndex?
+        @visibleCells[@selectedIndex].setSelected(no)
+      @selectedIndex = index
+      @visibleCells[@selectedIndex].setSelected(yes)
+      @delegate.didSelectIndex(@selectedIndex)
+      return true
+
+    render: ->
+      rowIndex = 0
+      lastRowInSection = 0
+      renderSection = (section) =>
+        $section = $(@template({title: @delegate.titleForSection(section)}))
+        $sectionList = $section.children('ul') 
+        lastRowInSection += @delegate.numberOfRowsInSection(section)
+        while rowIndex < lastRowInSection
+          cell = @delegate.cellForRowAtIndex(rowIndex)
+          cell.render()
+          @visibleCells.push(cell)
+          $sectionList.append(cell.element)
+          rowIndex++
+        return $section[0]
+
+      sections = (renderSection(section) for section in [0...@delegate.numberOfSections()])
+      
+      this.$(@element).empty().append(sections)
+
+
+  class Jb.SimpleCellView extends View
+    template: Handlebars.compile('''
+        {{#if anchor}}
+          <a href="{{anchor}}">{{label}}</a> 
+        {{else}}
+          {{label}}
+        {{/if}}
+    ''')
+    label: null
+    anchor: null
+
+    initialize: ->
+      @element = document.createElement('li')
+
+    setSelected: (state) ->
+      if state
+        this.$('a').addClass('selected')
+      else
+        this.$('a').removeClass('selected')
+
+    render: ->
+      content = @template({label: @label, anchor: @anchor})
+      @element.innerHTML = content
+
+
 
   # return to global scope
   return Jb
