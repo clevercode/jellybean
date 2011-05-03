@@ -8,17 +8,20 @@
     margin: 4px 0px 5px
     &:first-child
       margin-top: 0px
-  h1
+  header
+    +experimental(user-select, none)
+    cursor: default
     color: #444
     font-weight: bold
     text-transform: uppercase
     padding: 0.5em 0.75em
-  ul li a
+  ul li
     color: #333
     display: block
     font-size: 13px
     padding: 0.4em 1.5em 
     text-decoration: none
+    cursor: pointer
 
     &:hover
       background-color: #666

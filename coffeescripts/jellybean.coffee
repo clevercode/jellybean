@@ -44,6 +44,14 @@
 
       return this
 
+  Jb.uid = ->
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) ->
+      r = Math.random()*16|0
+      v = if c is 'x' then r else r & 0x3 | 0x8
+      v.toString(16);
+    ).toUpperCase();      
+    
+
   # A Model is responsible for data validation, transformation, & persistence
   # @example
   #   class Message extends Jellybean.Model
@@ -55,7 +63,7 @@
   #
   Model = class Jb.Model
     attributes: null
-    afterInit: -> null
+    initialize: -> null
 
     initWith: (properties) ->
       @attributes = {}
@@ -96,7 +104,13 @@
     save: ->
       if this.validate()
         this.trigger('update', this)
+        wasNewRecord = @newRecord
         @newRecord = false
+        this.id = Jb.uid()
+        this.model._records ||= {}
+        this.model._records[this.id] = this
+        this.model.trigger('new', this.clone()) if wasNewRecord
+        console.log(wasNewRecord)
         return true
       else
         this.trigger('error', this, @errors)
@@ -106,65 +120,97 @@
     toJSON: ->
       return @attributes
 
+    equals: (other) ->
+      return this.id is other.id
+
     # Returns an entangled copy of this record. Making changes to this object's
     # attributes will update the copy and vice versa
     # ~ Inspired by Spine.js
     clone: ->
       Object.create(this)
 
-  
-  Model.setModelName = (name) ->
-    @modelName = name
+  _(Model).extend
+    _records: null
+    setModelName: (name) ->
+      @modelName = name
 
-  Model.setAttributes = (attributes) ->
-    @attributes = attributes
+    setAttributes: (attributes) ->
+      @attributes = attributes
 
-  Model.propertyDescriptors = ->
-    descriptors = {}
-    for attribute in @attributes
-      do(attribute) ->
-        descriptors[attribute] = 
-          get: -> this.read(attribute)
-          set: (val) -> this.write(attribute, val)
-          enumerable: true
-    # sets the modelName of the object
-    descriptors['modelName'] = 
-      value: @modelName
-      writable: false
-
-    return descriptors
+    belongsTo: ( relation, options ) ->
+      @_associations ||= {}
+      @_associations['belongsTo'] ||= []
+      association =
+        name: relation
+        foreign_key: relation+ '_id'
+        className: options.className
 
 
-  # Creates a new, unsaved instance of the model. Attributes of the model are
-  # initialized with the passed object.
-  Model.init = (attributes) ->
-    record = this.allocate()
-    record.initWith(attributes: attributes)
-    record.newRecord = true
-    return record
- 
-  # Creates a new instance of the model and saves it.
-  Model.create = (attributes) ->
-    record = this.init(attributes)
-    # record.beforeCreate
-    record.save()
-    # record.afterCreate
-    return record
+    propertyDescriptors: ->
+      return @_descriptors if @_descriptors?
+      descriptors = {}
+      for attribute in @attributes
+        do(attribute) ->
+          descriptors[attribute] = 
+            get: -> this.read(attribute)
+            set: (val) -> this.write(attribute, val)
+            enumerable: true
+      # sets the modelName of the object
+      descriptors['modelName'] = 
+        value: @modelName
+      descriptors['model'] =
+        value: this
+      return @_descriptors = descriptors
 
-  # Builds an instance of the model
-  Model.allocate = ->
-    return Object.create(@::, @propertyDescriptors())
+    # Creates a new, unsaved instance of the model. Attributes of the model are
+    # initialized with the passed object.
+    init: (attributes) ->
+      record = this.allocate()
+      record.initWith(attributes: attributes)
+      record.newRecord = true
+      record.initialize()
+      return record
+   
+    # Creates a new instance of the model and saves it.
+    create: (attributes) ->
+      record = this.init(attributes)
+      # record.beforeCreate
+      record.save()
+      # record.afterCreate
+      return record
 
-  # Wakes a model up from persistence
-  Model.inst = (attributes) ->
-    # All reinitialized records should come pre-filled with their id.
-    throw "An id is required to reinitialize a record" unless attributes.id 
-    record = this.allocate()
-    record.initWith(attributes: attributes)
-    record.newRecord = false
-    return record
+    # Builds an instance of the model
+    allocate: ->
+      return Object.create(@::, @propertyDescriptors())
+
+    # Wakes a model up from persistence
+    inst: (attributes) ->
+      # All reinitialized records should come pre-filled with their id.
+      throw "An id is required to reinitialize a record" unless attributes.id 
+      record = this.allocate()
+      record.initWith(attributes: attributes)
+      record.newRecord = false
+      return record
     
+    refresh: (values) ->
+      @_records = {}
+      for value in values
+        record = this.inst(value)
+        @_records[record.id] = record
+      this.trigger('refresh')
+
+    records: ->
+      return (record.clone() for own key, record of @_records)
+
+    find: (id) ->
+      if record = @_records[id.toString()]
+        return record.clone()
+      else
+        throw new Error("RecordNotFound: No record exists for id: #{id}")
+        return undefined
+
   # Mixin the Events methods
+  _(Model).extend(Events)
   _(Model::).extend(Events)
 
   #
@@ -178,16 +224,25 @@
     title: null
     view: null
 
+    constructor: (options = {}) ->
+      @options = options
+      this.initialize()
+
+    initialize: -> null
 
   _(ViewController::).extend(Events)
 
        
 
   View = class Jb.View
+
+    tag: 'div'
     
     constructor: (element, options = {}) ->
+      @subviews = []
       @element = element
       @options = options
+      this._ensureElementExists()
       this.initialize()
 
     initialize: -> null
@@ -197,33 +252,67 @@
 
     # jQuery in the context of this View
     $: (selector) ->
-      Jb.$(selector or @element, @element)
+      unless @element?
+        return $([])
+      @_cached$ ||= $(@element)
+      if selector?
+        return @_cached$.find(selector)
+      else
+        return @_cached$
 
     # Update contents 
-    render: -> null
+    render: -> 
+      subview.render() for subview in @subviews
+
+    addSubview: (aSubview)->
+      @subviews.push(aSubview)
+      @element.appendChild(aSubview.element)
+
+    _ensureElementExists: ->
+      unless @element?
+        @element = document.createElement(@tag)
 
   _(View::).extend(Events)
 
-  class Jb.TableViewController extends ViewController
+  class Jb.ScrollView extends Jb.View
+    initialize: ->
+      super()
+      this.$().bind 'mousewheel', (event) =>
+        delta = event.wheelDelta / 5
+        newY = this.$().scrollTop() + delta
+        this.$().scrollTop(newY)
+        return false
+
+
+  class Jb.TableViewController extends Jb.ViewController
 
     tableStyle: 'JBDefaultTableStyle'
     currentSelection: null
     currentSelectionClassName: 'selected'
  
-    constructor: (options = {}) ->
+    initialize: () ->
       @data = []
-      @view = new Jb.TableView(options.element, style: this.tableStyle)
+      @view = new Jb.TableView(@options.element, style: this.tableStyle)
       @view.delegate = this
-      this.initialize() if @initialize
+
+    # Defaults
+    numberOfSections: -> 
+      1
+    numberOfRowsInSection: ->
+      0
+    numberOfRows: ->
+      0
 
 
-  class Jb.TableView extends View
+
+  class Jb.TableView extends Jb.ScrollView
+    tag: 'ul'
     delegate: null
     currentSelection: null
     visibleCells: null
     template: Handlebars.compile '''
       <li>
-        <h1>{{title}}</h1>
+        <header>{{title}}</header>
         <ul></ul>
       </li>
     '''
@@ -232,14 +321,14 @@
       super()
       @visibleCells = []
       @selectedIndex = null
-      Jb.$(@element)
+      this.$()
         .addClass(@options['style']) 
       this.bindEvents()
 
     bindEvents: -> 
-      $(@element).delegate 'a', 'click', (e) =>
+      this.$().delegate 'li li', 'click', (e) =>
         e.preventDefault()
-        this.setSelectedIndex(this.$('a').index(e.target))
+        this.setSelectedIndex(this.$('li li').index(e.target))
 
     setSelectedIndex: (index) ->
       # Don't reselect the same item
@@ -257,7 +346,7 @@
       rowIndex = 0
       lastRowInSection = 0
       renderSection = (section) =>
-        $section = $(@template({title: @delegate.titleForSection(section)}))
+        $section = Jb.$(@template({title: @delegate.titleForSection(section)}))
         $sectionList = $section.children('ul') 
         lastRowInSection += @delegate.numberOfRowsInSection(section)
         while rowIndex < lastRowInSection
@@ -270,31 +359,28 @@
 
       sections = (renderSection(section) for section in [0...@delegate.numberOfSections()])
       
-      this.$(@element).empty().append(sections)
+      this.$().empty().append(sections)
 
 
-  class Jb.SimpleCellView extends View
+  class Jb.TableCell extends View
     template: Handlebars.compile('''
-        {{#if anchor}}
-          <a href="{{anchor}}">{{label}}</a> 
-        {{else}}
-          {{label}}
-        {{/if}}
+      {{label}}
     ''')
+
     label: null
-    anchor: null
 
     initialize: ->
       @element = document.createElement('li')
+      this.$().addClass(@style) if @style
 
     setSelected: (state) ->
       if state
-        this.$('a').addClass('selected')
+        this.$().addClass('selected')
       else
-        this.$('a').removeClass('selected')
+        this.$().removeClass('selected')
 
     render: ->
-      content = @template({label: @label, anchor: @anchor})
+      content = @template(this)
       @element.innerHTML = content
 
 
