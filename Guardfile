@@ -1,5 +1,5 @@
 guard 'coffeescript', :output => 'build/javascripts' do
-  watch(/^coffeescripts\/(.*)\.coffee/)
+  watch(/^vendor/assets/javascripts\/(.*)\.coffee/)
 end
 
 guard 'coffeescript', :output => 'spec/javascripts/' do
